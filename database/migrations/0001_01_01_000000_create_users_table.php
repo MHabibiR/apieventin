@@ -18,7 +18,7 @@ return new class extends Migration
             $table->string('password');
             $table->string('nomor_handphone')->nullable();
             $table->string('jenis_kelamin')->nullable();
-            $table->enum('role', ['organizer', 'user'])->default('user');
+            $table->string('role')->default('user');
             $table->rememberToken();
             $table->timestamps();
         });

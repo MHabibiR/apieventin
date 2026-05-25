@@ -4,6 +4,7 @@ namespace Database\Seeders;
 
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 
 class OrganizerSeeder extends Seeder
 {
@@ -12,34 +13,47 @@ class OrganizerSeeder extends Seeder
      */
     public function run(): void
     {
-        DB::table('organizer')->insert([
+        $organizers = [
             [
                 'nama' => 'Federico Barba',
                 'email' => 'barba93@gmail.com',
                 'nama_eo' => 'YTTA Vendor',
                 'file_proposal' => 'proposal_jazz_malam.pdf',
-                'role' => 'organizer',
-                'created_at' => now(), 
-                'updated_at' => now(),
             ],
             [
                 'nama' => 'Maulana Haye',
                 'email' => 'haye33@gmail.com',
                 'nama_eo' => 'Gass aja',
                 'file_proposal' => 'proposal_seminar.pdf',
-                'role' => 'organizer',
-                'created_at' => now(), 
-                'updated_at' => now(),
             ],
             [
                 'nama' => 'Azizi Asadel',
                 'email' => 'zee@gmail.com',
                 'nama_eo' => 'Zeemotin Club',
                 'file_proposal' => 'proposal_workshop.pdf',
-                'role' => 'organizer',
+            ]
+        ];
+
+        foreach ($organizers as $org) {
+            // Buat data User terlebih dahulu untuk mendapatkan ID-nya
+            $userId = DB::table('users')->insertGetId([
+                'nama' => $org['nama'],
+                'email' => $org['email'],
+                'password' => Hash::make('password123'), // Set password default
+                // 'role' => 'organizer', // Hapus tanda // di depan jika tabel users Anda memiliki kolom 'role'
                 'created_at' => now(), 
                 'updated_at' => now(),
-            ]
-        ]);
+            ]);
+
+            // 2. Gunakan ID User tersebut untuk mengisi profil Organizer
+            DB::table('organizer')->insert([
+                'user_id' => $userId,
+                'nama_eo' => $org['nama_eo'],
+                'file_proposal' => $org['file_proposal'],
+                'status' => 'pending', 
+                'created_at' => now(), 
+                'updated_at' => now(),
+            ]);
+        }
     }
 }

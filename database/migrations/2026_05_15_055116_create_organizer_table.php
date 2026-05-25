@@ -16,7 +16,7 @@ return new class extends Migration
             $table->foreignId('user_id')->references('id')->on('users')->onDelete('cascade');
             $table->string('nama_eo');
             $table->string('file_proposal');
-            $table->enum('status', ['pending', 'accept', 'rejected'])->default('pending');
+            $table->string('status')->default('pending');
             $table->timestamps();
         });
     }

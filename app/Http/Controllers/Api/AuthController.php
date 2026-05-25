@@ -59,175 +59,85 @@ class AuthController extends Controller
 
     public function login(Request $request)
     {
-        // 1. Validasi format input
-        $validator = Validator::make($request->all(), [
-            'email' => 'required|string|email',
-            'password' => 'required|string'
-        ], [
-            'email.required' => 'Email wajib diisi.',
-            'email.email' => 'Format email tidak valid.',
-            'password.required' => 'Password wajib diisi.'
+        $request->validate([
+            'email' => 'required|email',
+            'password' => 'required',
         ]);
-    
-        if ($validator->fails()) {
+
+        // 1. Cari user berdasarkan email
+        $user = User::where('email', $request->email)->first();
+
+        // 2. Cek apakah user ada dan password cocok menggunakan Hash::check
+        if (!$user || !Hash::check($request->password, $user->password)) {
             return response()->json([
                 'success' => false,
-                'message' => 'Validasi gagal',
-                'errors' => $validator->errors()
-            ], 422);
+                'message' => 'Email atau password salah.'
+            ], 401);
         }
-    
-        $credentials = $request->only('email', 'password');
-    
-        // 2. Cek kecocokan Email & Password di tabel users
-        if (Auth::attempt($credentials)) {
-            $user = Auth::user();
-    
-            if ($user->role === 'organizer') {
-                // Cari data profil mereka di tabel 'organizers' berdasarkan user_id
-                $organizer = Organizer::where('user_id', $user->id)->first();
-    
-                // Jika baris data profil EO tidak sengaja hilang di database
-                if (!$organizer) {
-                    Auth::logout(); // Batalkan sesi login lokal
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Profil data Organizer Anda tidak ditemukan.'
-                    ], 404);
-                }
-    
-                if ($organizer->status === 'pending') {
-                    Auth::logout();
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Akun Anda masih dalam status peninjauan.'
-                    ], 403);
-                }
-    
-                if ($organizer->status === 'rejected') {
-                    Auth::logout();
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Maaf, pendaftaran Organizer Anda ditolak karena berkas tidak memenuhi syarat.'
-                    ], 403);
-                }
-            }
-            $payload = [
-                'id' => $user->id,
-                'nama' => $user->nama,
-                'email' => $user->email,
-                'role' => $user->role,
-                'iat' => now()->timestamp,
-                'exp' => now()->addHours(2)->timestamp 
-            ];
-    
-            $token = JWT::encode($payload, env('JWT_SECRET_KEY'), 'HS256');
-    
-            return response()->json([
-                'success' => true,
-                'message' => 'Login berhasil!',
-                'user' => [
-                    'id' => $user->id,
-                    'nama' => $user->nama,
-                    'jenis_kelamin' => $user->jenis_kelamin,
-                    'nomor_handphone' => $user->nomor_handphone,
-                    'email' => $user->email,
-                    'role' => $user->role
-                ],
-                'token' => 'Bearer ' . $token
-            ], 200);
-        }
-    
+
+        // 3. Generate Payload untuk JWT Token
+        $payload = [
+            'iss' => "laravel-jwt",
+            'sub' => $user->id,
+            'role' => $user->role, // Membawa role user ('main_admin' / 'organizer')
+            'iat' => time(),
+            'exp' => time() + 60 * 60 * 24
+        ];
+
+        $token = JWT::encode($payload, env('JWT_SECRET_KEY'), 'HS256');
+
+        // 4. Kembalikan Response
         return response()->json([
-            'success' => false,
-            'message' => 'Email atau Password salah!'
-        ], 401);
+            'success' => true,
+            'message' => 'Login berhasil.',
+            'token' => $token, // Token murni tanpa embel-embel 'Bearer '
+            'data' => [
+                'id' => $user->id,
+                'name' => $user->nama, // Pastikan ini menggunakan kolom 'nama' sesuai database
+                'email' => $user->email,
+                'role' => $user->role
+            ]
+        ], 200);
     }
 
     public function loginOrganizer(Request $request)
     {
-        $validator = Validator::make($request->all(), [
-            'email' => 'required|string|email',
-            'password' => 'required|string'
-        ], [
-            'email.required' => 'Email wajib diisi.',
-            'email.email' => 'Format email tidak valid.',
-            'password.required' => 'Password wajib diisi.'
+        $request->validate([
+            'email' => 'required|email',
+            'password' => 'required',
         ]);
-    
-        if ($validator->fails()) {
+
+        $user = User::where('email', $request->email)->first();
+
+        // Validasi tambahan: Pastikan role-nya adalah 'organizer'
+        if (!$user || !Hash::check($request->password, $user->password) || $user->role !== 'organizer') {
             return response()->json([
                 'success' => false,
-                'message' => 'Validasi gagal',
-                'errors' => $validator->errors()
-            ], 422);
+                'message' => 'Email, password salah, atau Anda bukan Organizer.'
+            ], 401);
         }
-    
-        $credentials = $request->only('email', 'password');
-    
-        // 2. Cek kecocokan Email & Password di tabel users
-        if (Auth::attempt($credentials)) {
-            $user = Auth::user();
-    
-            if ($user->role === 'organizer') {
-                // Cari data profil mereka di tabel 'organizers' berdasarkan user_id
-                $organizer = Organizer::where('user_id', $user->id)->first();
-    
-                // Jika baris data profil EO tidak sengaja hilang di database
-                if (!$organizer) {
-                    Auth::logout();
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Profil data Organizer Anda tidak ditemukan.'
-                    ], 404);
-                }
-    
-                if ($organizer->status === 'pending') {
-                    Auth::logout();
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Akun Anda masih dalam status peninjauan.'
-                    ], 403);
-                }
-    
-                if ($organizer->status === 'rejected') {
-                    Auth::logout();
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Maaf, pendaftaran Organizer Anda ditolak karena berkas tidak memenuhi syarat.'
-                    ], 403);
-                }
-            }
-            $payload = [
-                'id' => $user->id,
-                'nama' => $user->nama,
-                'email' => $user->email,
-                'role' => $user->role,
-                'iat' => now()->timestamp,
-                'exp' => now()->addHours(2)->timestamp 
-            ];
-    
-            $token = JWT::encode($payload, env('JWT_SECRET_KEY'), 'HS256');
-    
-            return response()->json([
-                'success' => true,
-                'message' => 'Login berhasil!',
-                'user' => [
-                    'id' => $user->id,
-                    'nama' => $user->nama,
-                    'email' => $user->email,
-                    'role' => $user->role,
-                    'iat' => now()->timestamp,
-                    'exp' => now()->addMinutes(30)->timestamp
-                ],
-                'token' => 'Bearer ' . $token
-            ], 200);
-        }
-    
+
+        $payload = [
+            'iss' => "laravel-jwt",
+            'sub' => $user->id,
+            'role' => $user->role,
+            'iat' => time(),
+            'exp' => time() + 60 * 60 * 24
+        ];
+
+        $token = JWT::encode($payload, env('JWT_SECRET_KEY'), 'HS256');
+
         return response()->json([
-            'success' => false,
-            'message' => 'Email atau Password salah!'
-        ], 401);
+            'success' => true,
+            'message' => 'Login Organizer berhasil.',
+            'token' => $token,
+            'data' => [
+                'id' => $user->id,
+                'name' => $user->nama,
+                'email' => $user->email,
+                'role' => $user->role
+            ]
+        ], 200);
     }
 
     public function registerOrganizer(Request $request)

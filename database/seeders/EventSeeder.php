@@ -18,7 +18,7 @@ class EventSeeder extends Seeder
         $organizer = Organizer::first();
 
         if (!$organizer) {
-            this.command.error('Gagal. daftarkan diri anda terlebih dahulu.');
+            $this->command->error('Gagal. daftarkan diri anda terlebih dahulu.');
             return;
         }
 
