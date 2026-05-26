@@ -90,12 +90,12 @@ class AuthController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Login berhasil.',
-            'token' => $token, // Token murni tanpa embel-embel 'Bearer '
-            'data' => [
+            'token' => $token,
+            'user' => [
                 'id' => $user->id,
-                'name' => $user->nama, // Pastikan ini menggunakan kolom 'nama' sesuai database
+                'nama' => $user->nama,
                 'email' => $user->email,
-                'role' => $user->role
+                'role' => $user->role,
             ]
         ], 200);
     }
@@ -109,35 +109,60 @@ class AuthController extends Controller
 
         $user = User::where('email', $request->email)->first();
 
-        // Validasi tambahan: Pastikan role-nya adalah 'organizer'
-        if (!$user || !Hash::check($request->password, $user->password) || $user->role !== 'organizer') {
+        if (!$user) {
             return response()->json([
                 'success' => false,
-                'message' => 'Email, password salah, atau Anda bukan Organizer.'
+                'message' => 'User tidak ditemukan.'
+            ], 404);
+        }
+
+        if (!Hash::check($request->password, $user->password)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Password salah.'
             ], 401);
         }
 
-        $payload = [
-            'iss' => "laravel-jwt",
-            'sub' => $user->id,
-            'role' => $user->role,
-            'iat' => time(),
-            'exp' => time() + 60 * 60 * 24
-        ];
+        if (!in_array($user->role, ['organizer', 'main_admin'])) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthorized'
+            ], 403);
+        }
 
-        $token = JWT::encode($payload, env('JWT_SECRET_KEY'), 'HS256');
+        try {
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Login Organizer berhasil.',
-            'token' => $token,
-            'data' => [
-                'id' => $user->id,
-                'name' => $user->nama,
-                'email' => $user->email,
-                'role' => $user->role
-            ]
-        ], 200);
+            $payload = [
+                'iss' => "laravel-jwt",
+                'sub' => $user->id,
+                'role' => $user->role,
+                'iat' => time(),
+                'exp' => time() + 60 * 60 * 24
+            ];
+
+            $token = JWT::encode($payload, env('JWT_SECRET_KEY'), 'HS256');
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Login berhasil.',
+                'token' => $token,
+                'data' => [
+                    'id' => $user->id,
+                    'nama' => $user->nama,
+                    'email' => $user->email,
+                    'role' => $user->role
+                ]
+            ], 200);
+
+        } catch (\Throwable $e) {
+
+            return response()->json([
+                'error' => true,
+                'message' => $e->getMessage(),
+                'line' => $e->getLine(),
+                'file' => $e->getFile()
+            ], 500);
+        }
     }
 
     public function registerOrganizer(Request $request)
