@@ -19,11 +19,21 @@ class Transaction extends Model
         'total_harga',
         'status_pembayaran',
         'status_kehadiran',
-        'payment_url'
+        'payment_url',
+        'is_lucky_draw_winner'
+    ];
+
+    protected $casts = [
+        'is_lucky_draw_winner' => 'boolean',
     ];
 
     public function event()
     {
         return $this->belongsTo(Event::class, 'event_id', 'id');
+    }
+
+    public function user()
+    {
+        return $this->belongsTo(User::class, 'user_id');
     }
 }

@@ -43,6 +43,11 @@ class RoleMiddleware
                 ], 403);
             }
 
+            // Fallback for old tokens that used 'sub' instead of 'id'
+            if (!isset($decoded->id) && isset($decoded->sub)) {
+                $decoded->id = $decoded->sub;
+            }
+
             // Menyisipkan data user yang ter-decode ke dalam request agar bisa dipakai di Controller lain
             $request->attributes->add(['auth_user' => $decoded]);
 

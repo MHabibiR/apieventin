@@ -6,6 +6,8 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\TransactionController;
 use App\Http\Controllers\Api\PaymentGatewayController;
+use App\Http\Controllers\Api\AdminWebController;
+use App\Http\Controllers\Api\OrganizerWebController;
 use App\Http\Controllers\EventController;
 use App\Http\Middleware\RoleMiddleware;
 
@@ -15,6 +17,7 @@ Route::get('/user', function (Request $request) {
 
 Route::get('/events', [EventController::class, 'index']);
 Route::get('/event-detail/{id}', [EventController::class, 'show']);
+Route::get('/events/{id}/seats', [EventController::class, 'getSeats']);
 
 
 Route::post('/register', [AuthController::class, 'register']);
@@ -23,6 +26,8 @@ Route::post('/register-organizer', [AuthController::class, 'registerOrganizer'])
 Route::post('/login-organizer', [AuthController::class, 'loginOrganizer']);
 
 Route::post('/midtrans-notification', [TransactionController::class, 'notificationHandler']);
+
+Route::get('/verify-certificate/{cert_id}', [TransactionController::class, 'verifyCertificate']);
 
 Route::middleware([RoleMiddleware::class. ':user'])->group(function () {
 
@@ -38,17 +43,40 @@ Route::middleware([RoleMiddleware::class. ':user'])->group(function () {
 
     Route::post('/refresh', [AuthController::class, 'refreshToken']);
 
+    Route::get('/ticket-qr/{kode_transaksi}', [TransactionController::class, 'getTicketQr']);
     Route::get('/detail-ticket/{kode_transaksi}', [TransactionController::class, 'showDetailTicket']);
+
+    Route::get('/my-certificates', [TransactionController::class, 'getMyCertificates']);
+    Route::get('/download-certificate/{kode_transaksi}', [TransactionController::class, 'downloadCertificate']);
 
     Route::post('/checkout-event', [PaymentGatewayController::class, 'requestInvoice']);
 
 });
 
-Route::middleware([RoleMiddleware::class. ':organizer'])->group(function () {
-    
-    Route::post('/events', [EventController::class, 'store']);
 
+Route::middleware([RoleMiddleware::class . ':main_admin'])->group(function () {
+    
+    Route::get('/admin/dashboard', [AdminWebController::class, 'getDashboardStats']);
+    Route::get('/admin/organizers', [AdminWebController::class, 'getAllOrganizers']);
+    Route::post('/admin/organizers/{id}/status', [AdminWebController::class, 'updateOrganizerStatus']);
+    Route::get('/admin/proposals', [AdminWebController::class, 'getAllProposals']);
+    Route::post('/admin/proposals/{id}/status', [AdminWebController::class, 'updateProposalStatus']);
+    Route::get('/admin/events', [AdminWebController::class, 'getAllEvents']);
+    Route::post('/admin/events', [AdminWebController::class, 'storeEvent']);
+    Route::delete('/admin/events/{id}', [AdminWebController::class, 'deleteEvent']);
 });
 
-Route::middleware(['RoleMiddleware'])->group(function () {
+Route::middleware([RoleMiddleware::class . ':organizer'])->group(function () {
+    Route::get('/organizer/dashboard', [OrganizerWebController::class, 'getDashboardStats']);
+    Route::get('/organizer/events', [OrganizerWebController::class, 'getMyEvents']);
+    Route::post('/organizer/events', [OrganizerWebController::class, 'storeMyEvent']);
+    Route::get('/organizer/participants', [OrganizerWebController::class, 'getParticipants']);
+    Route::get('/organizer/checkin-history', [OrganizerWebController::class, 'getCheckinHistory']);
+    Route::post('/organizer/checkin/verify', [OrganizerWebController::class, 'verifyCheckin']);
+    Route::get('/organizer/seating/{id}', [OrganizerWebController::class, 'getSeating']);
+    Route::post('/organizer/seating/update', [OrganizerWebController::class, 'updateSeating']);
+    Route::post('/organizer/events/{id}/lucky-draw/draw', [OrganizerWebController::class, 'drawLuckyDraw']);
+    Route::get('/organizer/events/{id}/lucky-draw/winners', [OrganizerWebController::class, 'getLuckyDrawWinners']);
+    Route::get('/organizer/certificates/{id}', [OrganizerWebController::class, 'getCertificates']);
+    Route::post('/organizer/certificates/publish', [OrganizerWebController::class, 'publishCertificate']);
 });

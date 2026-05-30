@@ -79,6 +79,7 @@ class AuthController extends Controller
         $payload = [
             'iss' => "laravel-jwt",
             'sub' => $user->id,
+            'id' => $user->id,
             'role' => $user->role, // Membawa role user ('main_admin' / 'organizer')
             'iat' => time(),
             'exp' => time() + 60 * 60 * 24
@@ -135,6 +136,7 @@ class AuthController extends Controller
             $payload = [
                 'iss' => "laravel-jwt",
                 'sub' => $user->id,
+                'id' => $user->id,
                 'role' => $user->role,
                 'iat' => time(),
                 'exp' => time() + 60 * 60 * 24

@@ -9,14 +9,17 @@ class Organizer extends Model
 {
     use HasFactory;
 
-    // Spesifikkan nama tabel sesuai migration
     protected $table = 'organizer';
 
-    // Kolom-kolom yang ada di migration kamu
     protected $fillable = [
         'user_id',
         'nama_eo',
         'file_proposal',
         'status',
     ];
+
+    public function user()
+    {
+        return $this->belongsTo(User::class, 'user_id');
+    }
 }
