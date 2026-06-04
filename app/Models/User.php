@@ -47,4 +47,9 @@ class User extends Authenticatable
             'password' => 'hashed',
         ];
     }
+
+    public function organizer()
+    {
+        return $this->hasOne(Organizer::class, 'user_id');
+    }
 }

@@ -11,9 +11,9 @@ class Event extends Model
 
     protected $table = 'events';
 
-    // perbarui oleh romi (1)
     protected $fillable = [
         'nama_event',
+        'deskripsi',
         'tgl_event',
         'organizer_id',
         'waktu',
@@ -26,11 +26,11 @@ class Event extends Model
         'kapasitas_reg',
         'kategori',
         'status',
+        'file_proposal',
     ];
 
     public function organizer()
     {
-        // 'App\Models\User' disesuaikan dengan model EO/User kamu
         return $this->belongsTo(Organizer::class, 'organizer_id'); 
     }
 }

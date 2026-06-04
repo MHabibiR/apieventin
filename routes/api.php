@@ -5,9 +5,9 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\TransactionController;
-use App\Http\Controllers\Api\PaymentGatewayController;
 use App\Http\Controllers\Api\AdminWebController;
 use App\Http\Controllers\Api\OrganizerWebController;
+use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\EventController;
 use App\Http\Middleware\RoleMiddleware;
 
@@ -25,11 +25,10 @@ Route::post('/login', [AuthController::class, 'login']);
 Route::post('/register-organizer', [AuthController::class, 'registerOrganizer']);
 Route::post('/login-organizer', [AuthController::class, 'loginOrganizer']);
 
-Route::post('/midtrans-notification', [TransactionController::class, 'notificationHandler']);
 
 Route::get('/verify-certificate/{cert_id}', [TransactionController::class, 'verifyCertificate']);
 
-Route::middleware([RoleMiddleware::class. ':user'])->group(function () {
+Route::middleware([RoleMiddleware::class . ':user,organizer,main_admin'])->group(function () {
 
     Route::get('/profile', [ProfileController::class, 'getProfile']);
     Route::get('/my-tickets', [TransactionController::class, 'getMyTickets']);
@@ -43,14 +42,15 @@ Route::middleware([RoleMiddleware::class. ':user'])->group(function () {
 
     Route::post('/refresh', [AuthController::class, 'refreshToken']);
 
+    Route::get('/notifications', [NotificationController::class, 'index']);
+
     Route::get('/ticket-qr/{kode_transaksi}', [TransactionController::class, 'getTicketQr']);
     Route::get('/detail-ticket/{kode_transaksi}', [TransactionController::class, 'showDetailTicket']);
 
     Route::get('/my-certificates', [TransactionController::class, 'getMyCertificates']);
     Route::get('/download-certificate/{kode_transaksi}', [TransactionController::class, 'downloadCertificate']);
 
-    Route::post('/checkout-event', [PaymentGatewayController::class, 'requestInvoice']);
-
+    Route::post('/checkout-manual', [TransactionController::class, 'checkoutManual']);
 });
 
 
@@ -63,6 +63,7 @@ Route::middleware([RoleMiddleware::class . ':main_admin'])->group(function () {
     Route::post('/admin/proposals/{id}/status', [AdminWebController::class, 'updateProposalStatus']);
     Route::get('/admin/events', [AdminWebController::class, 'getAllEvents']);
     Route::post('/admin/events', [AdminWebController::class, 'storeEvent']);
+    Route::post('/admin/events/{id}/status', [AdminWebController::class, 'updateEventStatus']);
     Route::delete('/admin/events/{id}', [AdminWebController::class, 'deleteEvent']);
 });
 
@@ -71,12 +72,19 @@ Route::middleware([RoleMiddleware::class . ':organizer'])->group(function () {
     Route::get('/organizer/events', [OrganizerWebController::class, 'getMyEvents']);
     Route::post('/organizer/events', [OrganizerWebController::class, 'storeMyEvent']);
     Route::get('/organizer/participants', [OrganizerWebController::class, 'getParticipants']);
+    Route::get('/organizer/participants/export', [OrganizerWebController::class, 'exportCsv']);
+    Route::post('/organizer/participants/manual', [OrganizerWebController::class, 'storeManualParticipant']);
+    Route::post('/organizer/participants/{id}/mark-paid', [OrganizerWebController::class, 'markAsPaid']);
+    Route::delete('/organizer/participants/{id}', [OrganizerWebController::class, 'deleteParticipant']);
     Route::get('/organizer/checkin-history', [OrganizerWebController::class, 'getCheckinHistory']);
+    Route::get('/organizer/transactions/pending', [OrganizerWebController::class, 'getPendingTransactions']);
+    Route::post('/organizer/transactions/{id}/validate', [OrganizerWebController::class, 'validateTransaction']);
+
     Route::post('/organizer/checkin/verify', [OrganizerWebController::class, 'verifyCheckin']);
     Route::get('/organizer/seating/{id}', [OrganizerWebController::class, 'getSeating']);
     Route::post('/organizer/seating/update', [OrganizerWebController::class, 'updateSeating']);
-    Route::post('/organizer/events/{id}/lucky-draw/draw', [OrganizerWebController::class, 'drawLuckyDraw']);
-    Route::get('/organizer/events/{id}/lucky-draw/winners', [OrganizerWebController::class, 'getLuckyDrawWinners']);
+    Route::get('/organizer/lucky-draw/{id}', [OrganizerWebController::class, 'getLuckyDrawData']);
+    Route::post('/organizer/lucky-draw/winner', [OrganizerWebController::class, 'storeLuckyDrawWinner']);
     Route::get('/organizer/certificates/{id}', [OrganizerWebController::class, 'getCertificates']);
     Route::post('/organizer/certificates/publish', [OrganizerWebController::class, 'publishCertificate']);
 });

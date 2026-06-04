@@ -24,7 +24,7 @@ class ProfileController extends Controller
             ], 401);
         }
 
-        $user = User::find($authUser->id);
+        $user = User::with('organizer')->find($authUser->id);
 
         if(!$user) {
             return response()->json([
@@ -33,80 +33,118 @@ class ProfileController extends Controller
             ], 404);
         }
 
-        return response()->json([
-            'success' => true,
-            'message' => 'data profile berhasil diambil.',
-            'data' => [
-                'id' => $user->id,
-                'nama' => $user->nama,
-                'email' => $user->email,
-                'nomor_handphone' => $user->nomor_handphone,
-                'jenis_kelamin' => $user->jenis_kelamin,
-                'role' => $user->role
-            ]
-        ], 200);
-    }
-
-    public function updateProfile(Request $request)
-{
-    $authUser = $request->attributes->get('auth_user');
-
-    if (!$authUser) {
-        return response()->json([
-            'success' => false,
-            'message' => 'Sesi tidak valid atau pengguna tidak ditemukan.'
-        ], 401);
-    }
-
-    // Cari data user asli di database agar bisa memanggil ->update()
-    $user = User::find($authUser->id);
-
-    if (!$user) {
-        return response()->json([
-            'success' => false,
-            'message' => 'Pengguna tidak ditemukan di database.'
-        ], 404);
-    }
-    
-    $validator = Validator::make($request->all(), [
-        'nama' => 'required|string|max:255',
-        'email' => 'required|email|unique:users,email,' . $user->id,
-        'nomor_handphone' => 'required|string|max:20',
-        'jenis_kelamin' => 'required|in:Laki-laki,Perempuan',
-    ], [
-        'nama.required' => 'Nama lengkap wajib diisi.',
-        'email.required' => 'Email wajib diisi.',
-        'email.unique' => 'Email sudah terdaftar pada akun lain.',
-        'nomor_handphone.required' => 'Nomor handphone wajib diisi.',
-        'jenis_kelamin.required' => 'Jenis kelamin wajib diisi.',
-        'jenis_kelamin.in' => 'Pilihan jenis kelamin tidak valid.'
-    ]);
-
-    if ($validator->fails()) {
-        return response()->json([
-            'success' => false, 
-            'message' => 'Validasi gagal',
-            'errors' => $validator->errors()
-        ], 422);
-    }
-
-    // Update seluruh field yang dikirimkan dari aplikasi mobile
-    $user->update($request->only('nama', 'email', 'nomor_handphone', 'jenis_kelamin'));
-
-    // Return data yang sudah di-update
-    return response()->json([
-        'success' => true,
-        'message' => 'Profil berhasil diperbarui.',
-        'data' => [
+        $responseData = [
             'id' => $user->id,
             'nama' => $user->nama,
             'email' => $user->email,
             'nomor_handphone' => $user->nomor_handphone,
             'jenis_kelamin' => $user->jenis_kelamin,
-            'role' => $user->role
-        ]
-    ], 200);
-}
+            'role' => $user->role,
+            'profile_photo' => $user->profile_photo ? asset('storage/' . $user->profile_photo) : null,
+            'profile_photo_path' => $user->profile_photo
+        ];
+
+        if ($user->role === 'organizer' && $user->organizer) {
+            $responseData['nama_eo'] = $user->organizer->nama_eo;
+            $responseData['file_proposal'] = $user->organizer->file_proposal ? asset('storage/' . $user->organizer->file_proposal) : null;
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'data profile berhasil diambil.',
+            'data' => $responseData
+        ], 200);
+    }
+
+    public function updateProfile(Request $request)
+    {
+        $authUser = $request->attributes->get('auth_user');
+
+        if (!$authUser) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Sesi tidak valid atau pengguna tidak ditemukan.'
+            ], 401);
+        }
+
+        // Cari data user asli di database agar bisa memanggil ->update()
+        $user = User::find($authUser->id);
+
+        if (!$user) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Pengguna tidak ditemukan di database.'
+            ], 404);
+        }
+        
+        $rules = [
+            'nama' => 'required|string|max:255',
+            'email' => 'required|email|unique:users,email,' . $user->id,
+            'nomor_handphone' => 'nullable|string|max:20',
+            'jenis_kelamin' => 'required|in:Laki-laki,Perempuan',
+            'profile_photo' => 'nullable|image|mimes:jpeg,png,jpg|max:2048'
+        ];
+        
+        if ($user->role === 'organizer') {
+            $rules['nama_eo'] = 'required|string|max:255';
+        }
+
+        $validator = Validator::make($request->all(), $rules, [
+            'nama.required' => 'Nama lengkap wajib diisi.',
+            'email.required' => 'Email wajib diisi.',
+            'email.unique' => 'Email sudah terdaftar pada akun lain.',
+            'jenis_kelamin.required' => 'Jenis kelamin wajib diisi.',
+            'jenis_kelamin.in' => 'Pilihan jenis kelamin tidak valid.',
+            'nama_eo.required' => 'Nama Organizer wajib diisi.',
+            'profile_photo.image' => 'File harus berupa gambar.',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false, 
+                'message' => 'Validasi gagal',
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        if ($request->hasFile('profile_photo')) {
+            if ($user->profile_photo && Storage::disk('public')->exists($user->profile_photo)) {
+                Storage::disk('public')->delete($user->profile_photo);
+            }
+            $file = $request->file('profile_photo');
+            $path = $file->store('avatars', 'public');
+            $user->profile_photo = $path;
+        }
+
+        // Update seluruh field yang dikirimkan dari aplikasi mobile
+        $user->update($request->only('nama', 'email', 'nomor_handphone', 'jenis_kelamin'));
+
+        $responseData = [
+            'id' => $user->id,
+            'nama' => $user->nama,
+            'email' => $user->email,
+            'nomor_handphone' => $user->nomor_handphone,
+            'jenis_kelamin' => $user->jenis_kelamin,
+            'role' => $user->role,
+            'profile_photo' => $user->profile_photo ? asset('storage/' . $user->profile_photo) : null,
+            'profile_photo_path' => $user->profile_photo
+        ];
+
+        if ($user->role === 'organizer') {
+            $organizer = Organizer::where('user_id', $user->id)->first();
+            if ($organizer) {
+                $organizer->update(['nama_eo' => $request->nama_eo]);
+                $responseData['nama_eo'] = $organizer->nama_eo;
+            }
+        }
+
+        // Return data yang sudah di-update
+        return response()->json([
+            'success' => true,
+            'message' => 'Profil berhasil diperbarui.',
+            'data' => $responseData
+        ], 200);
+    }
 
 public function deleteAccount(Request $request)
 {

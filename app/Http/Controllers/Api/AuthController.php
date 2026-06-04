@@ -330,7 +330,7 @@ class AuthController extends Controller
         ], 200);
     }
 
-        public function refreshToken(Request $request)
+    public function refreshToken(Request $request)
     {
         $authUser = $request->attributes->get('auth_user');
 

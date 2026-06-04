@@ -21,9 +21,33 @@ class AdminWebController extends Controller
         $total_participants = Transaction::where('status_pembayaran', 'settlement')->count();
         $pending_proposals = Proposal::where('status', 'pending')->count();
         
+        $active_tokens = DB::table('personal_access_tokens')
+            ->whereNotNull('last_used_at')
+            ->where('tokenable_type', 'App\Models\User')
+            ->orderBy('last_used_at', 'desc')
+            ->take(5)
+            ->get();
+            
+        $active_users = User::whereIn('id', $active_tokens->pluck('tokenable_id'))->with('organizer')->get();
+        
+        $recent_active_organizers = [];
+        foreach ($active_tokens as $token) {
+            $user = $active_users->firstWhere('id', $token->tokenable_id);
+            if ($user && $user->role === 'organizer' && $user->organizer) {
+                $recent_active_organizers[] = [
+                    'name' => $user->organizer->nama_eo,
+                    'last_active' => \Carbon\Carbon::parse($token->last_used_at)->diffForHumans()
+                ];
+            }
+        }
+        
+        // Capping to 3 for UI
+        $recent_active_organizers = array_slice($recent_active_organizers, 0, 3);
+        
         $recent_events_data = Event::with('organizer.user')->latest()->take(5)->get();
         $recent_events = $recent_events_data->map(function ($event) {
             return [
+                'id' => $event->id,
                 'title' => $event->nama_event,
                 'status' => $event->status,
             ];
@@ -36,14 +60,25 @@ class AdminWebController extends Controller
                 'total_organizers' => $total_organizers,
                 'total_participants' => $total_participants,
                 'pending_proposals' => $pending_proposals,
-                'recent_events' => $recent_events
+                'recent_events' => $recent_events,
+                'recent_active_organizers' => $recent_active_organizers
             ]
         ]);
     }
 
-    public function getAllOrganizers()
+    public function getAllOrganizers(Request $request)
     {
-        $organizers = Organizer::with('user')->withCount('events')->latest()->get();
+        $query = Organizer::with('user')->withCount('events')->latest();
+        
+        if ($request->has('search') && $request->search != '') {
+            $query->where('nama_eo', 'like', '%' . $request->search . '%');
+        }
+        
+        if ($request->has('status') && $request->status != '') {
+            $query->where('status', $request->status);
+        }
+
+        $organizers = $query->get();
 
         $mappedOrganizers = $organizers->map(function ($org) {
             return [
@@ -108,10 +143,17 @@ class AdminWebController extends Controller
             'kapasitas_reg' => 'nullable|integer',
             'kapasitas_vip' => 'nullable|integer',
             'thumbnail' => 'nullable|string',
+            'seats' => 'nullable|boolean',
         ]);
 
         $validated['password_pengaju'] = Hash::make($validated['password_pengaju']);
         $validated['status'] = 'pending';
+        // Convert string representations of boolean if necessary
+        if (isset($validated['seats'])) {
+            $validated['seats'] = filter_var($validated['seats'], FILTER_VALIDATE_BOOLEAN);
+        } else {
+            $validated['seats'] = true; // default to true
+        }
 
         $proposal = Proposal::create($validated);
 
@@ -128,7 +170,7 @@ class AdminWebController extends Controller
 
         $mappedProposals = $proposals->map(function ($prop) {
             return [
-                'id' => $prop->id,
+                'id' => 'proposal_' . $prop->id,
                 'title' => $prop->nama_event,
                 'category' => $prop->kategori,
                 'ticket_type' => ($prop->harga_reg > 0) ? 'Paid' : 'Free',
@@ -140,18 +182,41 @@ class AdminWebController extends Controller
                 'date_start' => $prop->tgl_event,
                 'venue_name' => $prop->lokasi,
                 'description' => $prop->deskripsi,
+                'file_proposal' => $prop->file_proposal ? asset('storage/' . $prop->file_proposal) : null,
             ];
         });
 
+        // Ambil pending events dari organizer yang sudah ada
+        $pendingEvents = Event::with('organizer')->where('status', 'pending')->get();
+        $mappedEvents = $pendingEvents->map(function ($ev) {
+            return [
+                'id' => 'event_' . $ev->id,
+                'title' => $ev->nama_event,
+                'category' => $ev->kategori,
+                'ticket_type' => ($ev->harga_reg > 0) ? 'Paid' : 'Free',
+                'price' => $ev->harga_reg ?? 0,
+                'organizer_name' => $ev->organizer ? $ev->organizer->nama_eo : 'Unknown',
+                'created_at' => $ev->created_at,
+                'status' => $ev->status,
+                'total_capacity' => ($ev->kapasitas_reg ?? 0) + ($ev->kapasitas_vip ?? 0),
+                'date_start' => $ev->tgl_event,
+                'venue_name' => $ev->lokasi,
+                'description' => $ev->deskripsi,
+                'file_proposal' => $ev->file_proposal ? asset('storage/' . $ev->file_proposal) : null,
+            ];
+        });
+
+        $allProposals = collect($mappedProposals)->merge($mappedEvents)->sortByDesc('created_at')->values();
+
         $stats = [
-            'pending' => $proposals->where('status', 'pending')->count(),
-            'approved' => $proposals->where('status', 'approved')->count(),
-            'rejected' => $proposals->where('status', 'rejected')->count()
+            'pending' => $allProposals->where('status', 'pending')->count(),
+            'approved' => $allProposals->where('status', 'approved')->count(),
+            'rejected' => $allProposals->where('status', 'rejected')->count()
         ];
 
         return response()->json([
             'status' => 'success',
-            'data' => $mappedProposals,
+            'data' => $allProposals,
             'stats' => $stats
         ]);
     }
@@ -160,6 +225,34 @@ class AdminWebController extends Controller
     {
         $request->validate(['status' => 'required|in:approved,rejected']);
         
+        // Cek apakah ini Event Proposal dari Organizer yang sudah ada
+        if (str_starts_with($id, 'event_')) {
+            $eventId = str_replace('event_', '', $id);
+            $event = Event::find($eventId);
+            
+            if (!$event) {
+                return response()->json(['status' => 'error', 'message' => 'Event not found'], 404);
+            }
+            
+            if ($request->status === 'approved') {
+                $event->status = 'open';
+                $event->save();
+            } else {
+                $event->delete(); // Jika ditolak, hapus event dari draf
+            }
+            
+            return response()->json([
+                'status' => 'success', 
+                'message' => 'Status proposal event berhasil diperbarui',
+                'data' => $event
+            ]);
+        }
+
+        // Handle Proposal Pendaftaran Organizer Baru
+        if (str_starts_with($id, 'proposal_')) {
+            $id = str_replace('proposal_', '', $id);
+        }
+
         $proposal = Proposal::find($id);
         if (!$proposal) {
             return response()->json(['status' => 'error', 'message' => 'Proposal not found'], 404);
@@ -201,7 +294,7 @@ class AdminWebController extends Controller
                     'harga_vip' => $proposal->harga_vip,
                     'harga_reg' => $proposal->harga_reg,
                     'lokasi' => $proposal->lokasi,
-                    'seats' => 0, // Default seats
+                    'seats' => $proposal->seats, // Gunakan pengaturan kursi dari proposal
                     'thumbnail' => $proposal->thumbnail ?? 'default.jpg',
                     'kapasitas_vip' => $proposal->kapasitas_vip,
                     'kapasitas_reg' => $proposal->kapasitas_reg,
@@ -260,11 +353,33 @@ class AdminWebController extends Controller
             'harga_vip' => 'nullable|numeric',
             'harga_reg' => 'required|numeric',
             'lokasi' => 'required|string',
-            'seats' => 'nullable|integer',
+            'seats' => 'nullable|boolean',
             'kapasitas_vip' => 'nullable|integer',
             'kapasitas_reg' => 'required|integer',
             'kategori' => 'required|string',
+            'status' => 'nullable|string|in:draft,open,closed,done',
+            'thumbnail' => 'nullable|image|mimes:jpeg,png,jpg|max:2048'
         ]);
+
+        if ($request->hasFile('thumbnail')) {
+            $file = $request->file('thumbnail');
+            $path = $file->store('thumbnails', 'public');
+            $validated['thumbnail'] = $path;
+        } else {
+            $validated['thumbnail'] = 'default.jpg';
+        }
+        
+        if (!isset($validated['deskripsi'])) {
+            $validated['deskripsi'] = '';
+        }
+
+        // Convert string representations of boolean if necessary
+        if (isset($validated['seats'])) {
+            $validated['seats'] = filter_var($validated['seats'], FILTER_VALIDATE_BOOLEAN);
+        } else {
+            // Checkbox might not be sent if unchecked
+            $validated['seats'] = false;
+        }
 
         $event = Event::create($validated);
 
@@ -287,6 +402,24 @@ class AdminWebController extends Controller
         return response()->json([
             'status' => 'success',
             'message' => 'Event deleted successfully'
+        ]);
+    }
+
+    public function updateEventStatus(Request $request, $id)
+    {
+        $request->validate(['status' => 'required|in:open,closed,done']);
+        
+        $event = Event::find($id);
+        if (!$event) {
+            return response()->json(['status' => 'error', 'message' => 'Event not found'], 404);
+        }
+
+        $event->update(['status' => $request->status]);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Event status updated successfully',
+            'data' => $event
         ]);
     }
 }
