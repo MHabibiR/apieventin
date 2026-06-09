@@ -27,6 +27,7 @@ class Event extends Model
         'kategori',
         'status',
         'file_proposal',
+        'is_certificate_published',
     ];
 
     public function organizer()

@@ -20,7 +20,8 @@ class Transaction extends Model
         'status_pembayaran',
         'status_kehadiran',
         'payment_url',
-        'is_lucky_draw_winner'
+        'is_lucky_draw_winner',
+        'nama_sertifikat'
     ];
 
     protected $casts = [

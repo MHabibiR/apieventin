@@ -166,11 +166,11 @@ class AdminWebController extends Controller
 
     public function getAllProposals()
     {
+        // 1. Ambil dari tabel Proposals (EO Baru)
         $proposals = Proposal::latest()->get();
-
         $mappedProposals = $proposals->map(function ($prop) {
             return [
-                'id' => 'proposal_' . $prop->id,
+                'id' => 'proposal_' . $prop->id, // Beri prefix agar bisa dibedakan saat di-approve
                 'title' => $prop->nama_event,
                 'category' => $prop->kategori,
                 'ticket_type' => ($prop->harga_reg > 0) ? 'Paid' : 'Free',
@@ -182,15 +182,15 @@ class AdminWebController extends Controller
                 'date_start' => $prop->tgl_event,
                 'venue_name' => $prop->lokasi,
                 'description' => $prop->deskripsi,
-                'file_proposal' => $prop->file_proposal ? asset('storage/' . $prop->file_proposal) : null,
+                'file_proposal' => $ev->file_proposal ? asset('storage/' . $ev->file_proposal) : null,
             ];
         });
 
-        // Ambil pending events dari organizer yang sudah ada
-        $pendingEvents = Event::with('organizer')->where('status', 'pending')->get();
+        // 2. Ambil dari tabel Events (EO Lama yang submit event baru)
+        $pendingEvents = Event::with('organizer')->where('status', 'pending')->latest()->get();
         $mappedEvents = $pendingEvents->map(function ($ev) {
             return [
-                'id' => 'event_' . $ev->id,
+                'id' => 'event_' . $ev->id, // Beri prefix
                 'title' => $ev->nama_event,
                 'category' => $ev->kategori,
                 'ticket_type' => ($ev->harga_reg > 0) ? 'Paid' : 'Free',
@@ -206,6 +206,7 @@ class AdminWebController extends Controller
             ];
         });
 
+        // 3. Gabungkan kedua data (Merge)
         $allProposals = collect($mappedProposals)->merge($mappedEvents)->sortByDesc('created_at')->values();
 
         $stats = [

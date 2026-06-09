@@ -46,6 +46,9 @@ class ProfileController extends Controller
 
         if ($user->role === 'organizer' && $user->organizer) {
             $responseData['nama_eo'] = $user->organizer->nama_eo;
+            $responseData['no_rekening'] = $user->organizer->no_rekening;
+            $responseData['atas_nama_rekening'] = $user->organizer->atas_nama_rekening;
+            $responseData['nama_bank'] = $user->organizer->nama_bank;
             $responseData['file_proposal'] = $user->organizer->file_proposal ? asset('storage/' . $user->organizer->file_proposal) : null;
         }
 
@@ -87,6 +90,9 @@ class ProfileController extends Controller
         
         if ($user->role === 'organizer') {
             $rules['nama_eo'] = 'required|string|max:255';
+            $rules['no_rekening'] = 'nullable|string|max:50';
+            $rules['atas_nama_rekening'] = 'nullable|string|max:255';
+            $rules['nama_bank'] = 'nullable|string|max:100';
         }
 
         $validator = Validator::make($request->all(), $rules, [
@@ -133,8 +139,16 @@ class ProfileController extends Controller
         if ($user->role === 'organizer') {
             $organizer = Organizer::where('user_id', $user->id)->first();
             if ($organizer) {
-                $organizer->update(['nama_eo' => $request->nama_eo]);
+                $organizer->update([
+                    'nama_eo' => $request->nama_eo,
+                    'no_rekening' => $request->no_rekening,
+                    'atas_nama_rekening' => $request->atas_nama_rekening,
+                    'nama_bank' => $request->nama_bank
+                ]);
                 $responseData['nama_eo'] = $organizer->nama_eo;
+                $responseData['no_rekening'] = $organizer->no_rekening;
+                $responseData['atas_nama_rekening'] = $organizer->atas_nama_rekening;
+                $responseData['nama_bank'] = $organizer->nama_bank;
             }
         }
 

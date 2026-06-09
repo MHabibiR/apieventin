@@ -16,6 +16,9 @@ class Organizer extends Model
         'nama_eo',
         'file_proposal',
         'status',
+        'no_rekening',
+        'atas_nama_rekening',
+        'nama_bank',
     ];
 
     public function user()

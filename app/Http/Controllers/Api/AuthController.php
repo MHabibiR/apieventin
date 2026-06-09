@@ -221,7 +221,7 @@ class AuthController extends Controller
                 'user_id' => $user->id,
                 'nama_eo' => $request->nama_eo,
                 'file_proposal' => $filePath,
-                'status' => 'accept',
+                'status' => 'pending',
             ]);
 
             DB::commit();
@@ -368,5 +368,127 @@ class AuthController extends Controller
             'message' => 'Token berhasil diperbarui otomatis.',
             'token' => 'Bearer ' . $newToken
         ], 200);
+    }
+    public function forgotPassword(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'email' => 'required|string|email|exists:users,email',
+        ], [
+            'email.exists' => 'Email tidak terdaftar di sistem kami.'
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['success' => false, 'errors' => $validator->errors()], 422);
+        }
+
+        $otp = rand(100000, 999999);
+
+        DB::table('password_reset_tokens')->updateOrInsert(
+            ['email' => $request->email],
+            [
+                'token' => $otp,
+                'created_at' => Carbon::now() 
+            ]
+        );
+
+        try {
+            Mail::to($request->email)->send(new ResetPasswordMail($otp, $request->email));
+            return response()->json([
+                'success' => true,
+                'message' => 'Kode OTP telah dikirim ke email Anda.'
+            ], 200);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal mengirim email, coba lagi nanti.',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+
+    public function verifyOtp(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'email' => 'required|email',
+            'otp' => 'required|numeric',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['success' => false, 'errors' => $validator->errors()], 422);
+        }
+
+        $resetData = DB::table('password_reset_tokens')
+            ->where('email', $request->email)
+            ->where('token', $request->otp)
+            ->first();
+
+        if (!$resetData) {
+            return response()->json(['success' => false, 'message' => 'Kode OTP salah.'], 400);
+        }
+
+        // Hitung masa kadaluwarsa
+        $createdAt = Carbon::parse($resetData->created_at);
+        if (Carbon::now()->diffInMinutes($createdAt) > 5) {
+            return response()->json(['success' => false, 'message' => 'Kode OTP sudah kadaluwarsa.'], 400);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'OTP valid, silakan atur ulang password Anda.'
+        ], 200);
+    }
+
+
+    public function resetPassword(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'email' => 'required|email|exists:users,email',
+            'otp' => 'required|numeric',
+            'password' => 'required|string|min:6|confirmed',
+        ], [
+            'email.exists' => 'Email tidak ditemukan.',
+            'password.min' => 'Kata sandi minimal 6 karakter.',
+            'password.confirmed' => 'Konfirmasi kata sandi tidak cocok.'
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['success' => false, 'errors' => $validator->errors()], 422);
+        }
+
+        // Validasi ulang data OTP untuk menjaga integritas data saat submit password baru
+        $resetData = DB::table('password_reset_tokens')
+            ->where('email', $request->email)
+            ->where('token', $request->otp)
+            ->first();
+
+        if (!$resetData) {
+            return response()->json(['success' => false, 'message' => 'Sesi reset password tidak valid.'], 400);
+        }
+
+        // Cek kembali masa kadaluwarsa sebelum eksekusi ganti password
+        $createdAt = Carbon::parse($resetData->created_at);
+        if (Carbon::now()->diffInMinutes($createdAt) > 5) {
+            DB::table('password_reset_tokens')->where('email', $request->email)->delete();
+            return response()->json(['success' => false, 'message' => 'Sesi reset password sudah habis. Silakan minta kode baru.'], 400);
+        }
+
+        // Ambil data user lalu ganti password lamanya
+        $user = User::where('email', $request->email)->first();
+        if ($user) {
+            $user->update([
+                'password' => Hash::make($request->password)
+            ]);
+
+            // Hapus record token setelah password berhasil diubah
+            DB::table('password_reset_tokens')->where('email', $request->email)->delete();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Password Anda berhasil diperbarui! Silakan login.'
+            ], 200);
+        }
+
+        return response()->json(['success' => false, 'message' => 'User tidak ditemukan.'], 404);
     }
 }

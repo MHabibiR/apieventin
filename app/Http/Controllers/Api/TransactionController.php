@@ -105,6 +105,7 @@ class TransactionController extends Controller
                 'status_pembayaran' => $statusPembayaran,
                 'status_kehadiran'  => 'belum_hadir',
                 'payment_url'       => $paymentUrl,
+                'nama_sertifikat'   => $authUser->nama,
             ]);
 
             DB::commit();
@@ -252,13 +253,16 @@ class TransactionController extends Controller
             $viewName = "certificates.seminar"; // fallback
         }
 
+        $namaSertifikat = $transaction->nama_sertifikat ?? $transaction->user->nama;
+        $transaction->user->nama = $namaSertifikat;
+
         $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView($viewName, [
             'user' => $transaction->user,
             'event' => $transaction->event,
             'transaction' => $transaction
         ])->setPaper('a4', 'landscape');
 
-        return $pdf->download('Sertifikat-' . $transaction->event->nama_event . '-' . $transaction->user->nama . '.pdf');
+        return $pdf->download('Sertifikat-' . $transaction->event->nama_event . '-' . $namaSertifikat . '.pdf');
     }
 
     public function verifyCertificate($cert_id)
@@ -275,7 +279,7 @@ class TransactionController extends Controller
             'success' => true,
             'message' => 'Sertifikat Valid!',
             'data' => [
-                'nama_peserta' => $transaction->user->nama,
+                'nama_peserta' => $transaction->nama_sertifikat ?? $transaction->user->nama,
                 'nama_event' => $transaction->event->nama_event,
                 'kategori' => $transaction->event->kategori,
                 'tgl_event' => $transaction->event->tgl_event,

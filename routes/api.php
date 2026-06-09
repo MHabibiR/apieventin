@@ -25,6 +25,10 @@ Route::post('/login', [AuthController::class, 'login']);
 Route::post('/register-organizer', [AuthController::class, 'registerOrganizer']);
 Route::post('/login-organizer', [AuthController::class, 'loginOrganizer']);
 
+Route::post('/forgot-password', [AuthController::class, 'forgotPassword']);
+Route::post('/verify-otp', [AuthController::class, 'verifyOtp']);
+Route::post('/reset-password', [AuthController::class, 'resetPassword']);
+
 
 Route::get('/verify-certificate/{cert_id}', [TransactionController::class, 'verifyCertificate']);
 

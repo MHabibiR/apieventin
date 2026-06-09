@@ -47,9 +47,18 @@ class OrganizerWebController extends Controller
             ];
         });
 
+        $earliest_event = Event::where('organizer_id', $organizerId)->where('status', 'open')->min('created_at');
+        $days_to_show = 11;
+        if ($earliest_event) {
+            $days_since = \Carbon\Carbon::parse($earliest_event)->diffInDays(\Carbon\Carbon::today());
+            $days_to_show = min(11, $days_since);
+        } else {
+            $days_to_show = 0;
+        }
+
         $daily_chart = [];
         $max_daily = 0;
-        for ($i = 11; $i >= 0; $i--) {
+        for ($i = $days_to_show; $i >= 0; $i--) {
             $date = \Carbon\Carbon::today()->subDays($i);
             $count = Transaction::whereHas('event', function ($query) use ($organizerId) {
                 $query->where('organizer_id', $organizerId);
@@ -291,7 +300,8 @@ class OrganizerWebController extends Controller
                 'total_harga' => $harga ?? 0,
                 'status_pembayaran' => 'success',
                 'status_kehadiran' => 'belum_hadir',
-                'nomor_kursi' => $request->nomor_kursi
+                'nomor_kursi' => $request->nomor_kursi,
+                'nama_sertifikat' => $user->nama
             ]);
 
             DB::commit();
@@ -518,27 +528,36 @@ class OrganizerWebController extends Controller
 
     public function getCertificates($id)
     {
+        $event = Event::find($id);
+        if (!$event) {
+            return response()->json(['status' => 'error', 'message' => 'Event not found'], 404);
+        }
+
         $transactions = Transaction::with('user')
             ->where('event_id', $id)
             ->where('status_kehadiran', 'checked_in')
             ->get();
 
-        $participants = $transactions->map(function($trx) {
+        $statusStr = $event->is_certificate_published ? 'sent' : 'pending';
+
+        $participants = $transactions->map(function($trx) use ($statusStr) {
             return [
                 'name' => $trx->user ? $trx->user->nama : 'Unknown',
                 'email' => $trx->user ? $trx->user->email : '-',
                 'checkin_time' => $trx->updated_at,
-                'status' => 'pending'
+                'status' => $statusStr
             ];
         });
+
+        $eligibleCount = $participants->count();
 
         return response()->json([
             'status' => 'success',
             'data' => $participants,
             'stats' => [
-                'eligible' => $participants->count(),
-                'sent' => 0, 
-                'pending' => $participants->count()
+                'eligible' => $eligibleCount,
+                'sent' => $event->is_certificate_published ? $eligibleCount : 0, 
+                'pending' => $event->is_certificate_published ? 0 : $eligibleCount
             ]
         ]);
     }
